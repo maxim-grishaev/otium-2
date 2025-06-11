@@ -1,0 +1,20 @@
+meta {
+  name: Select plan: BAD PLAN
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{BASE_URL}}/subscriptions/select-plan
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{AUTH_TOKEN}}
+}
+
+body:json {
+  {"planId":"non-existent-plan","paymentMethodToken":"SUCCESS_TOKEN"}
+}
