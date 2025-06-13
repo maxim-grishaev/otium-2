@@ -7,20 +7,26 @@ import {
 } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { DB_CONNECTION, type DbClient } from '../db/db.module'; // Changed from PG_CONNECTION
+import { DB_CONNECTION, type DbClient } from '../db/db.module';
 import {
   subscriptionPlans,
-  type SubscriptionPlan,
+  type DbRawSubscriptionPlan,
   subscriptions,
-  type Subscription,
+  type DbRawSubscription,
+  SubscriptionStatus,
 } from '../db/schema';
 import type { SelectPlanDto } from '../dto/SelectPlanDto';
+import { PaymentService } from '../payment/payment.service';
+import { getNextBillingDate } from 'src/lib/getNextBillingDate';
 
 @Injectable()
 export class SubscriptionsService {
-  constructor(@Inject(DB_CONNECTION) private db: DbClient) {}
+  constructor(
+    @Inject(DB_CONNECTION) private db: DbClient,
+    @Inject(PaymentService) private payment: PaymentService,
+  ) {}
 
-  async getAvailablePlans(): Promise<SubscriptionPlan[]> {
+  async getAvailablePlans(): Promise<DbRawSubscriptionPlan[]> {
     return this.db.query.subscriptionPlans.findMany({
       where: eq(subscriptionPlans.isActive, true),
     });
@@ -31,7 +37,7 @@ export class SubscriptionsService {
     selectPlanDto: SelectPlanDto,
   ): Promise<{
     message: string;
-    subscription: Omit<Subscription, 'passwordHash'>;
+    subscription: DbRawSubscription;
     paymentStatus: string;
   }> {
     const { planId, paymentMethodToken } = selectPlanDto;
@@ -46,12 +52,12 @@ export class SubscriptionsService {
       );
     }
 
-    // 2. Mock Payment Processing
-    const paymentResult = await processMockPayment(
-      plan.priceAmount,
-      plan.priceCurrency,
-      paymentMethodToken,
-    );
+    // 2. Payment Processing
+    const paymentResult = await this.payment.process({
+      amount: plan.priceAmount,
+      currency: plan.priceCurrency,
+      token: paymentMethodToken,
+    });
     if (!paymentResult.success) {
       throw new BadRequestException(`Payment failed: ${paymentResult.message}`);
     }
@@ -60,45 +66,32 @@ export class SubscriptionsService {
     const existingSubscription = await this.db.query.subscriptions.findFirst({
       where: and(
         eq(subscriptions.userId, userId),
-        // And the status is 'active'
-        eq(subscriptions.status, 'active'),
+        eq(subscriptions.status, SubscriptionStatus.Active),
       ),
     });
 
     if (existingSubscription) {
       // In a real scenario, you'd handle upgrades/downgrades here.
       // For simplicity, we'll prevent a new subscription if active.
-      throw new ConflictException('User already has an active subscription.');
+      throw new ConflictException(
+        'Upgrade NOT IMPLEMENTED. User already has an active subscription. ',
+      );
     }
 
     // 4. Create new subscription record
-    const newSubscriptionId = uuidv4();
     const startDate = new Date();
-    let nextBillingDate: Date;
-
-    if (plan.billingCycle === 'monthly') {
-      nextBillingDate = new Date(
-        startDate.getFullYear(),
-        startDate.getMonth() + 1,
-        startDate.getDate(),
-      );
-    } else if (plan.billingCycle === 'annually') {
-      nextBillingDate = new Date(
-        startDate.getFullYear() + 1,
-        startDate.getMonth(),
-        startDate.getDate(),
-      );
-    } else {
+    const nextBillingDate = getNextBillingDate(plan.billingCycle, startDate);
+    if (!nextBillingDate) {
       throw new BadRequestException('Invalid billing cycle for plan.');
     }
 
     const newSubscription = await this.db
       .insert(subscriptions)
       .values({
-        id: newSubscriptionId,
+        id: uuidv4(),
         userId: userId,
         planId: planId,
-        status: 'active',
+        status: SubscriptionStatus.Active,
         startDate: startDate,
         nextBillingDate: nextBillingDate,
       })
@@ -111,36 +104,37 @@ export class SubscriptionsService {
       paymentStatus: paymentResult.status,
     };
   }
-}
 
-const processMockPayment = async (
-  amount: number,
-  currency: string,
-  token: string,
-): Promise<{
-  success: boolean;
-  status: string;
-  message: string;
-}> => {
-  console.log(`Mocking payment for ${amount} ${currency} with token: ${token}`);
-  await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate network delay
-  if (token === 'SUCCESS_TOKEN') {
+  async cancelSubscription(userId: string) {
+    const existingSubscription = await this.db.query.subscriptions.findFirst({
+      where: and(
+        eq(subscriptions.userId, userId),
+        eq(subscriptions.status, SubscriptionStatus.Active),
+      ),
+    });
+
+    if (!existingSubscription) {
+      throw new NotFoundException(
+        `Subscription not found for user with ID ${userId}.`,
+      );
+    }
+
+    await this.db
+      .update(subscriptions)
+      .set({
+        status: SubscriptionStatus.Canceled,
+        nextBillingDate: null,
+      })
+      .where(eq(subscriptions.id, existingSubscription.id))
+      .execute();
+
     return {
-      success: true,
-      status: 'approved',
-      message: 'Payment approved by mock gateway.',
+      message: `Subscription ${existingSubscription.id} cancelled successfully!`,
+      subscription: {
+        ...existingSubscription,
+        status: SubscriptionStatus.Canceled,
+        nextBillingDate: null,
+      },
     };
   }
-  if (token === 'FAIL_TOKEN') {
-    return {
-      success: false,
-      status: 'declined',
-      message: 'Payment declined by mock gateway.',
-    };
-  }
-  return {
-    success: false,
-    status: 'invalid_token',
-    message: 'Invalid payment token provided.',
-  };
-};
+}

@@ -4,8 +4,6 @@ import { createDbClient } from './createDbClient';
 
 dotenv.config();
 
-const DB_NAME = 'otrium';
-
 async function seed() {
   const db = createDbClient();
 

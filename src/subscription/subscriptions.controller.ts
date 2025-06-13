@@ -1,37 +1,43 @@
 import {
+  Body,
   Controller,
   Get,
-  Post,
-  Body,
   HttpCode,
-  HttpStatus,
+  Inject,
+  Post,
+  Req,
+  // Request,
   UseGuards,
-  Request,
+  HttpStatus,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { SubscriptionsService } from './subscriptions.service';
 import type { SelectPlanDto } from '../dto/SelectPlanDto';
-import type { User } from '../db/schema';
-
-() => SubscriptionsService;
+import { getUser } from '../lib/getUser';
 
 @Controller('subscriptions')
 export class SubscriptionsController {
-  constructor(private readonly subscriptionsService: SubscriptionsService) {}
+  constructor(
+    @Inject(SubscriptionsService)
+    private readonly subscriptionsService: SubscriptionsService,
+  ) {}
 
   @Get('plans')
   async getPlans() {
     return this.subscriptionsService.getAvailablePlans();
   }
 
-  @UseGuards(AuthGuard('jwt')) // Protect this route
+  @UseGuards(AuthGuard('jwt'))
   @Post('select-plan')
   @HttpCode(HttpStatus.OK)
-  async selectPlan(
-    @Request() req: { user: User }, // req.user is populated by JWT strategy
-    @Body() selectPlanDto: SelectPlanDto,
-  ) {
-    const userId = req.user.id; // Get userId from the authenticated user
-    return this.subscriptionsService.selectPlan(userId, selectPlanDto);
+  async selectPlan(@Req() req: Request, @Body() selectPlanDto: SelectPlanDto) {
+    return this.subscriptionsService.selectPlan(getUser(req).id, selectPlanDto);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('cancel-plan')
+  @HttpCode(HttpStatus.OK)
+  async cancelPlan(@Req() req: Request) {
+    return this.subscriptionsService.cancelSubscription(getUser(req).id);
   }
 }

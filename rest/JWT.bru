@@ -1,0 +1,15 @@
+meta {
+  name: JWT
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{BASE_URL}}/auth/profile
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{AUTH_TOKEN}}
+}

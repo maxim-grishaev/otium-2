@@ -6,5 +6,5 @@ export default defineConfig({
   verbose: true,
   strict: true,
   dialect: 'postgresql',
-  dbCredentials: { url: `${process.env.DB_CONN}` },
+  dbCredentials: { url: `${process.env.DB_URL}` },
 });

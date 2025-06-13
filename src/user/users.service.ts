@@ -8,16 +8,19 @@ import { eq } from 'drizzle-orm';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { DB_CONNECTION, type DbClient } from '../db/db.module';
-import { type User, users, type UserFull } from '../db/schema';
+import { users } from '../db/schema';
 import type { CreateUserDto } from '../dto/CreateUserDto';
+import { UserDto } from 'src/dto/UserDto';
+import type { PgColumn } from 'drizzle-orm/pg-core';
 
 @Injectable()
 export class UsersService {
-  constructor(@Inject(DB_CONNECTION) private db: DbClient) {}
+  constructor(
+    @Inject(DB_CONNECTION)
+    private db: DbClient,
+  ) {}
 
-  async registerUser(
-    createUserDto: CreateUserDto,
-  ): Promise<Omit<User, 'passwordHash'>> {
+  async registerUser(createUserDto: CreateUserDto) {
     const { email, password, firstName, lastName } = createUserDto;
 
     const existingUser = await this.db.query.users.findFirst({
@@ -28,9 +31,9 @@ export class UsersService {
       throw new ConflictException('Email already registered.');
     }
 
-    const passwordHash = await bcrypt.hash(password, 10); // Hash password
+    const passwordHash = await bcrypt.hash(password, 10);
 
-    const newUser = await this.db
+    const newUsers = await this.db
       .insert(users)
       .values({
         id: uuidv4(),
@@ -42,25 +45,22 @@ export class UsersService {
       .returning()
       .execute();
 
-    const { passwordHash: _, ...result } = newUser[0];
-    return result;
+    return new UserDto(newUsers[0]);
   }
 
-  async findUserByEmail(email: string): Promise<UserFull | undefined> {
-    const user = await this.db.query.users.findFirst({
-      where: eq(users.email, email),
-    });
-    return user;
+  async findFirstUserBy(col: PgColumn, val: string) {
+    return await this.db.query.users.findFirst({ where: eq(col, val) });
+  }
+  async findUserByEmail(email: string) {
+    const user = await this.findFirstUserBy(users.email, email);
+    return !user ? null : new UserDto(user);
   }
 
-  async findUserById(id: string): Promise<Omit<User, 'passwordHash'>> {
-    const user = await this.db.query.users.findFirst({
-      where: eq(users.id, id),
-    });
+  async findUserById(id: string) {
+    const user = await this.findFirstUserBy(users.id, id);
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found.`);
     }
-    const { passwordHash, ...result } = user;
-    return result;
+    return new UserDto(user);
   }
 }

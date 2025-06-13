@@ -3,7 +3,8 @@ import { PassportStrategy } from '@nestjs/passport';
 import { eq } from 'drizzle-orm';
 import { Strategy, ExtractJwt } from 'passport-jwt';
 import { DB_CONNECTION, type DbClient } from '../db/db.module';
-import { users, type User } from '../db/schema';
+import { users } from '../db/schema';
+import { UserDto } from 'src/dto/UserDto';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -18,7 +19,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: {
     id: string;
     email: string;
-  }): Promise<User> {
+  }) {
     const user = await this.db.query.users.findFirst({
       where: eq(users.id, payload.id),
     });
@@ -27,7 +28,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found.');
     }
 
-    const { passwordHash, ...result } = user;
-    return result;
+    return new UserDto(user);
   }
 }
