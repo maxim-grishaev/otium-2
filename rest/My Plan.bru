@@ -1,15 +1,16 @@
 meta {
-  name: JWT
+  name: My Plan
   type: http
-  seq: 9
+  seq: 10
 }
 
 get {
-  url: {{BASE_URL}}/auth/profile
+  url: {{BASE_URL}}/subscriptions/my-plan
   body: none
   auth: none
 }
 
 headers {
   Authorization: Bearer {{AUTH_TOKEN}}
+  Content-Type: application/json
 }

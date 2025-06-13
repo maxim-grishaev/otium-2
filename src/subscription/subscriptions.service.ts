@@ -14,6 +14,7 @@ import {
   subscriptions,
   type DbRawSubscription,
   SubscriptionStatus,
+  SubscriptionPlanBillingCycle,
 } from '../db/schema';
 import type { SelectPlanDto } from '../dto/SelectPlanDto';
 import { PaymentService } from '../payment/payment.service';
@@ -119,22 +120,27 @@ export class SubscriptionsService {
       );
     }
 
+    const updateSub: Partial<DbRawSubscription> = {
+      // Should be handles separately in "cron job" working on daily basis
+      // status: SubscriptionStatus.Canceled,
+      endDate: existingSubscription.nextBillingDate,
+      nextBillingDate: null,
+    };
     await this.db
       .update(subscriptions)
-      .set({
-        status: SubscriptionStatus.Canceled,
-        nextBillingDate: null,
-      })
+      .set(updateSub)
       .where(eq(subscriptions.id, existingSubscription.id))
       .execute();
 
     return {
-      message: `Subscription ${existingSubscription.id} cancelled successfully!`,
-      subscription: {
-        ...existingSubscription,
-        status: SubscriptionStatus.Canceled,
-        nextBillingDate: null,
-      },
+      ...existingSubscription,
+      ...updateSub,
     };
+  }
+
+  async getSubscription(userId: string) {
+    return await this.db.query.subscriptions.findFirst({
+      where: eq(subscriptions.userId, userId),
+    });
   }
 }

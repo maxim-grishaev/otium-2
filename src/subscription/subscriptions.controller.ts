@@ -6,7 +6,7 @@ import {
   Inject,
   Post,
   Req,
-  // Request,
+  Request,
   UseGuards,
   HttpStatus,
 } from '@nestjs/common';
@@ -25,6 +25,12 @@ export class SubscriptionsController {
   @Get('plans')
   async getPlans() {
     return this.subscriptionsService.getAvailablePlans();
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('my-plan')
+  async getMyPlan(@Request() req: Request) {
+    return this.subscriptionsService.getSubscription(getUser(req).id);
   }
 
   @UseGuards(AuthGuard('jwt'))
